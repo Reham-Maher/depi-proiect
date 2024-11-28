@@ -1,0 +1,147 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AWS CloudFormation template to create a VPC with 2 private subnets, 1 public subnet, NAT Gateway, and proper route tables."
+
+Resources:
+  # Create VPC
+  MyVPC:
+    Type: "AWS::EC2::VPC"
+    Properties: 
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: "Name"
+          Value: "MyVPC"
+
+  # Create an Internet Gateway
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+
+  # Attach the Internet Gateway to the VPC
+  VPCGatewayAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties: 
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Create Public Subnet (in AZ1)
+  PublicSubnet:
+    Type: "AWS::EC2::Subnet"
+    Properties: 
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.1.0/24"
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: "Name"
+          Value: "PublicSubnet"
+
+  # Create Private Subnet 1 (in AZ1)
+  PrivateSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties: 
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.2.0/24"
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: "Name"
+          Value: "PrivateSubnet1"
+
+  # Create Private Subnet 2 (in AZ2)
+  PrivateSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties: 
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.3.0/24"
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: "Name"
+          Value: "PrivateSubnet2"
+
+  # Create an Elastic IP for the NAT Gateway
+  NatElasticIP:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Domain: "vpc"
+
+  # Create the NAT Gateway in the Public Subnet
+  NatGateway:
+    Type: "AWS::EC2::NatGateway"
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      AllocationId: !GetAtt NatElasticIP.AllocationId
+
+  # Create Public Route Table
+  PublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: "Name"
+          Value: "PublicRouteTable"
+
+  # Create Route to Internet Gateway for Public Subnet
+  PublicRoute:
+    Type: "AWS::EC2::Route"
+    Properties: 
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  # Associate Public Subnet with Public Route Table
+  PublicSubnetRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # Create Private Route Table for Private Subnets (Using NAT Gateway)
+  PrivateRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: "Name"
+          Value: "PrivateRouteTable"
+
+  # Create Route for Private Subnets to NAT Gateway
+  PrivateRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NatGateway
+
+  # Associate Private Subnet 1 with Private Route Table
+  PrivateSubnet1RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Associate Private Subnet 2 with Private Route Table
+  PrivateSubnet2RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+Outputs:
+  VPCId:
+    Description: "VPC Id"
+    Value: !Ref MyVPC
+  PublicSubnetId:
+    Description: "Public Subnet Id"
+    Value: !Ref PublicSubnet
+  PrivateSubnet1Id:
+    Description: "Private Subnet 1 Id"
+    Value: !Ref PrivateSubnet1
+  PrivateSubnet2Id:
+    Description: "Private Subnet 2 Id"
+    Value: !Ref PrivateSubnet2
+  NatGatewayId:
+    Description: "NAT Gateway Id"
+    Value: !Ref NatGateway
+
